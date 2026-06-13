@@ -1,4 +1,10 @@
-import { findNearestHotspot, moveAvatar } from "./avatar.js?v=collision-facing-1";
+import {
+  findNearestHotspot,
+  getFrameMoveDistance,
+  getMovementVectorFromKeys,
+  MOVEMENT_KEY_VECTORS,
+  moveAvatar,
+} from "./avatar.js?v=smooth-avatar-1";
 import {
   AREAS,
   CATEGORY_LABELS,
@@ -43,13 +49,16 @@ import {
   resolveSceneTransition,
   SCENE_ORDER,
 } from "./scenes.js?v=collision-facing-1";
-import { ThreeWorkshopScene } from "./three-scene.js?v=collision-facing-1";
+import { ThreeWorkshopScene } from "./three-scene.js?v=pixel-chibi-smooth-2";
 
 const STORAGE_KEY = "alchemy-workshop-p0-state";
 const AVATAR_KEY = "alchemy-workshop-p0-avatar";
 const SCENE_KEY = "alchemy-workshop-p0-scene";
 const STAGE_BOUNDS = { width: 100, height: 100 };
-const AVATAR_SPEED = 7;
+const AVATAR_NUDGE_DISTANCE = 6;
+const AVATAR_WALK_UNITS_PER_SECOND = 42;
+const POINTER_TARGET_EPSILON = 0.65;
+const AVATAR_PERSIST_INTERVAL_MS = 220;
 
 const app = document.querySelector("#app");
 
@@ -64,6 +73,12 @@ let moveTimer = null;
 let threeScene = null;
 let threeSceneSignature = "";
 let diagnosticsTimer = null;
+let movementFrameId = 0;
+let lastMovementFrameAt = 0;
+let lastAvatarPersistAt = 0;
+let pressedMovementKeys = new Set();
+let pointerTarget = null;
+let lastNearestId = "";
 
 render();
 
@@ -80,20 +95,12 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  const vectors = {
-    ArrowUp: { x: 0, y: -1 },
-    KeyW: { x: 0, y: -1 },
-    ArrowDown: { x: 0, y: 1 },
-    KeyS: { x: 0, y: 1 },
-    ArrowLeft: { x: -1, y: 0 },
-    KeyA: { x: -1, y: 0 },
-    ArrowRight: { x: 1, y: 0 },
-    KeyD: { x: 1, y: 0 },
-  };
-
-  if (vectors[event.code]) {
+  if (MOVEMENT_KEY_VECTORS[event.code]) {
     event.preventDefault();
-    moveAvatarBy(vectors[event.code]);
+    pressedMovementKeys.add(event.code);
+    pointerTarget = null;
+    activeDialogue = null;
+    startMovementLoop();
   }
 
   if (event.code === "Enter" || event.code === "KeyE") {
@@ -107,6 +114,19 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+document.addEventListener("keyup", (event) => {
+  if (!MOVEMENT_KEY_VECTORS[event.code]) return;
+  event.preventDefault();
+  pressedMovementKeys.delete(event.code);
+});
+
+window.addEventListener("blur", () => {
+  clearMovementIntent();
+  avatar = { ...avatar, moving: false };
+  persistAvatar();
+  render();
+});
+
 document.addEventListener("pointerdown", (event) => {
   const stage = event.target.closest(".workshop-stage");
   if (!stage || event.target.closest("[data-action]") || event.target.closest(".drawer")) return;
@@ -115,7 +135,7 @@ document.addEventListener("pointerdown", (event) => {
     x: clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100),
     y: clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100),
   };
-  moveAvatarToward(targetPosition);
+  walkAvatarToward(targetPosition);
   activeDialogue = null;
 });
 
@@ -351,23 +371,133 @@ function switchScene(sceneId) {
 }
 
 function moveAvatarBy(vector) {
-  avatar = moveAvatar(avatar, vector, AVATAR_SPEED, STAGE_BOUNDS, getCurrentCollisionZones());
+  clearMovementIntent();
+  avatar = moveAvatar(avatar, vector, AVATAR_NUDGE_DISTANCE, STAGE_BOUNDS, getCurrentCollisionZones());
   activeDialogue = null;
   persistAvatar();
   stopMovingSoon();
   render();
 }
 
-function moveAvatarToward(targetPosition) {
+function walkAvatarToward(targetPosition) {
+  pressedMovementKeys.clear();
+  pointerTarget = targetPosition;
+  activeDialogue = null;
+  startMovementLoop();
+}
+
+function startMovementLoop() {
+  window.clearTimeout(moveTimer);
+  if (movementFrameId) return;
+  const now = performance.now();
+  lastMovementFrameAt = now - 16;
+  runMovementFrame(now);
+}
+
+function runMovementFrame(now) {
+  const elapsedMs = Math.max(0, now - lastMovementFrameAt);
+  lastMovementFrameAt = now;
+
+  const movement = getMovementIntent();
+  if (!movement) {
+    finishMovementLoop();
+    return;
+  }
+
+  const previous = avatar;
+  const distance = getFrameMoveDistance(AVATAR_WALK_UNITS_PER_SECOND, elapsedMs);
+  avatar = moveAvatar(previous, movement.vector, Math.min(distance, movement.maxDistance), STAGE_BOUNDS, getCurrentCollisionZones());
+
+  if (pointerTarget && !hasAvatarMoved(previous, avatar) && !avatar.moving) {
+    pointerTarget = null;
+  }
+
+  if (hasAvatarChanged(previous, avatar)) {
+    activeDialogue = null;
+    persistAvatarDuringMovement(now);
+    syncAvatarSceneDuringMovement();
+  }
+
+  if (pressedMovementKeys.size > 0 || pointerTarget) {
+    movementFrameId = requestAnimationFrame(runMovementFrame);
+    return;
+  }
+
+  finishMovementLoop();
+}
+
+function getMovementIntent() {
+  const keyVector = getMovementVectorFromKeys(pressedMovementKeys);
+  if (keyVector.x !== 0 || keyVector.y !== 0) {
+    pointerTarget = null;
+    return {
+      vector: keyVector,
+      maxDistance: Infinity,
+    };
+  }
+
+  if (!pointerTarget) return null;
+
   const vector = {
-    x: targetPosition.x - avatar.x,
-    y: targetPosition.y - avatar.y,
+    x: pointerTarget.x - avatar.x,
+    y: pointerTarget.y - avatar.y,
   };
   const distance = Math.hypot(vector.x, vector.y);
-  avatar = moveAvatar(avatar, vector, Math.min(AVATAR_SPEED, distance), STAGE_BOUNDS, getCurrentCollisionZones());
+  if (distance <= POINTER_TARGET_EPSILON) {
+    pointerTarget = null;
+    return null;
+  }
+
+  return {
+    vector,
+    maxDistance: distance,
+  };
+}
+
+function finishMovementLoop() {
+  clearAnimationFrame();
+  if (avatar.moving) {
+    avatar = { ...avatar, moving: false };
+  }
   persistAvatar();
-  stopMovingSoon();
   render();
+}
+
+function clearMovementIntent() {
+  pressedMovementKeys.clear();
+  pointerTarget = null;
+  clearAnimationFrame();
+}
+
+function clearAnimationFrame() {
+  if (!movementFrameId) return;
+  cancelAnimationFrame(movementFrameId);
+  movementFrameId = 0;
+  lastMovementFrameAt = 0;
+}
+
+function hasAvatarMoved(previous, next) {
+  return previous.x !== next.x || previous.y !== next.y;
+}
+
+function hasAvatarChanged(previous, next) {
+  return hasAvatarMoved(previous, next) || previous.facing !== next.facing || previous.moving !== next.moving;
+}
+
+function persistAvatarDuringMovement(now) {
+  if (now - lastAvatarPersistAt < AVATAR_PERSIST_INTERVAL_MS) return;
+  lastAvatarPersistAt = now;
+  persistAvatar();
+}
+
+function syncAvatarSceneDuringMovement() {
+  const nearest = findNearestHotspot(avatar, getCurrentHotspots());
+  const nearestId = nearest?.id ?? "";
+  if (nearestId !== lastNearestId) {
+    render();
+    return;
+  }
+  syncThreeScene(nearest);
 }
 
 function getHotspotApproachAvatar(hotspot) {
@@ -391,6 +521,7 @@ function getHotspotApproachAvatar(hotspot) {
 }
 
 function stopMovingSoon() {
+  clearMovementIntent();
   window.clearTimeout(moveTimer);
   moveTimer = window.setTimeout(() => {
     avatar = { ...avatar, moving: false };
@@ -433,6 +564,7 @@ function render() {
   if (nearest?.id !== activeDialogue?.hotspotId && !nearest?.npc) {
     activeDialogue = null;
   }
+  lastNearestId = nearest?.id ?? "";
   app.innerHTML = `
     <main class="${shellClass}">
       ${renderHud(currentScene)}
@@ -547,6 +679,27 @@ function mountThreeScene(nearest) {
   updateThreeMountDiagnostics(nearest, hotspots, false);
 }
 
+function syncThreeScene(nearest) {
+  const container = document.querySelector("#three-stage");
+  if (!container) return;
+  const scene = getScene(currentSceneId);
+  const hotspots = getCurrentHotspots();
+  const signature = getThreeSceneSignature(scene, hotspots);
+
+  if (!threeScene || threeSceneSignature !== signature || threeScene.container !== container) {
+    mountThreeScene(nearest);
+    return;
+  }
+
+  threeScene.setViewState({
+    avatar,
+    scene,
+    hotspots,
+    nearestId: nearest?.id ?? null,
+  });
+  updateThreeMountDiagnostics(nearest, hotspots, true);
+}
+
 function getThreeSceneSignature(scene, hotspots) {
   return `${scene.id}:${hotspots.map((hotspot) => hotspot.id).join("|")}`;
 }
@@ -557,6 +710,10 @@ function updateThreeMountDiagnostics(nearest, hotspots, reused) {
     container.dataset.threeReused = String(reused);
     container.dataset.threeNearestId = nearest?.id ?? "";
     container.dataset.threeHotspotCount = String(hotspots.length);
+    container.dataset.threeAvatarX = String(avatar.x);
+    container.dataset.threeAvatarY = String(avatar.y);
+    container.dataset.threeAvatarFacing = avatar.facing;
+    container.dataset.threeAvatarMoving = String(avatar.moving);
   }
   window.__alchemy3dMounted = {
     avatar: { ...avatar },

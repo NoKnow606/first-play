@@ -9,7 +9,46 @@ export const AVATAR_MOTION = {
   turnStrength: 18,
   walkBobSpeed: 14,
   walkBobHeight: 0.085,
+  bodySway: 0.045,
+  headSway: 0.032,
+  accessorySway: 0.06,
 };
+
+const AVATAR_SILHOUETTE_PLAN = {
+  style: "pixel-chibi-alchemist",
+  head: { width: 0.72, height: 0.58, depth: 0.56 },
+  body: { width: 0.56, height: 0.68, depth: 0.42 },
+  parts: [
+    "shadow",
+    "boots",
+    "robe",
+    "front-panel",
+    "cape",
+    "belt",
+    "potion-belt",
+    "satchel",
+    "arms",
+    "hands",
+    "head",
+    "hair",
+    "eyes",
+    "cheeks",
+    "mouth",
+    "wide-brim-hat",
+    "hat-rune",
+    "wand",
+    "companion-orb",
+  ],
+};
+
+export function getAvatarSilhouettePlan() {
+  return {
+    ...AVATAR_SILHOUETTE_PLAN,
+    head: { ...AVATAR_SILHOUETTE_PLAN.head },
+    body: { ...AVATAR_SILHOUETTE_PLAN.body },
+    parts: [...AVATAR_SILHOUETTE_PLAN.parts],
+  };
+}
 
 export function shouldWriteDiagnostics(time, lastDiagnosticAt, interval = DIAGNOSTIC_INTERVAL_SECONDS) {
   return time - lastDiagnosticAt >= interval;
@@ -216,108 +255,124 @@ export class ThreeWorkshopScene {
 
   buildAvatar() {
     this.avatarGroup = new THREE.Group();
+    this.bodyGroup = new THREE.Group();
+    this.headGroup = new THREE.Group();
+    this.accessoryGroup = new THREE.Group();
+    this.companionOrb = new THREE.Group();
 
-    const skin = 0xe0a16c;
+    const plan = getAvatarSilhouettePlan();
+    const skin = 0xe4a875;
+    const skinShade = 0xc9825c;
+    const cheekPink = 0xf0a596;
     const outline = 0x2a211b;
-    const robe = 0x2f6a58;
-    const robeDark = 0x1f4e45;
-    const purple = 0x6b4aa0;
+    const robe = 0x327b68;
+    const robeLight = 0x3f9a7c;
+    const robeDark = 0x1f5148;
+    const gold = 0xe2b543;
+    const purple = 0x6c4aa2;
+    const purpleDark = 0x433266;
+    const boot = 0x403630;
 
-    const body = block(0.54, 0.78, 0.38, robe);
-    body.position.set(0, 0.72, 0);
-    this.avatarGroup.add(body);
+    this.avatarPose = {
+      bodyY: 0,
+      headY: 0,
+      accessoryY: 0,
+      companionY: 1.42,
+      leftLegY: 0.22,
+      rightLegY: 0.22,
+      leftArmY: 0.76,
+      rightArmY: 0.76,
+    };
 
-    const bodySide = block(0.18, 0.78, 0.4, robeDark);
-    bodySide.position.set(0.24, 0.72, 0.01);
-    this.avatarGroup.add(bodySide);
+    this.avatarGroup.scale.setScalar(1.05);
+    this.avatarGroup.add(positionedBlock(0.9, 0.06, 0.64, outline, 0, 0.03, 0.02));
 
-    const robeHem = block(0.62, 0.12, 0.44, 0xd8a946);
-    robeHem.position.set(0, 0.38, -0.01);
-    this.avatarGroup.add(robeHem);
+    const cape = positionedBlock(0.66, 0.68, 0.1, purpleDark, 0, 0.72, 0.24);
+    cape.rotation.x = -0.06;
+    this.bodyGroup.add(cape);
 
-    const belt = block(0.62, 0.1, 0.44, outline);
-    belt.position.set(0, 0.78, -0.01);
-    this.avatarGroup.add(belt);
+    const body = positionedBlock(plan.body.width, plan.body.height, plan.body.depth, robe, 0, 0.7, 0);
+    this.bodyGroup.add(body);
+    this.bodyGroup.add(positionedBlock(0.2, 0.62, 0.44, robeDark, 0.22, 0.69, 0.01));
+    this.bodyGroup.add(positionedBlock(0.28, 0.58, 0.45, robeLight, -0.13, 0.72, -0.02));
+    this.bodyGroup.add(positionedBlock(0.62, 0.11, 0.48, gold, 0, 0.39, -0.01));
+    this.bodyGroup.add(positionedBlock(0.66, 0.1, 0.48, outline, 0, 0.79, -0.01));
+    this.bodyGroup.add(positionedBlock(0.18, 0.18, 0.08, gold, 0, 0.86, -0.25));
+    this.bodyGroup.add(positionedBlock(0.12, 0.12, 0.09, 0x8be4ff, 0.01, 0.87, -0.31));
 
-    const badge = block(0.16, 0.16, 0.08, 0xe2b543);
-    badge.position.set(0, 0.84, -0.22);
-    this.avatarGroup.add(badge);
+    this.leftLeg = new THREE.Group();
+    this.leftLeg.position.set(-0.18, this.avatarPose.leftLegY, 0.01);
+    this.leftLeg.add(positionedBlock(0.2, 0.34, 0.24, boot, 0, 0, 0));
+    this.leftLeg.add(positionedBlock(0.28, 0.1, 0.3, outline, -0.02, -0.2, -0.04));
+    this.bodyGroup.add(this.leftLeg);
 
-    const head = block(0.56, 0.5, 0.5, skin);
-    head.position.set(0, 1.36, -0.02);
-    this.avatarGroup.add(head);
+    this.rightLeg = new THREE.Group();
+    this.rightLeg.position.set(0.18, this.avatarPose.rightLegY, 0.01);
+    this.rightLeg.add(positionedBlock(0.2, 0.34, 0.24, boot, 0, 0, 0));
+    this.rightLeg.add(positionedBlock(0.28, 0.1, 0.3, outline, 0.02, -0.2, -0.04));
+    this.bodyGroup.add(this.rightLeg);
 
-    const leftEye = block(0.07, 0.07, 0.05, outline);
-    leftEye.position.set(-0.12, 1.38, -0.3);
-    this.avatarGroup.add(leftEye);
+    this.leftArm = new THREE.Group();
+    this.leftArm.position.set(-0.43, this.avatarPose.leftArmY, -0.02);
+    this.leftArm.add(positionedBlock(0.18, 0.42, 0.2, robeDark, 0, 0.05, 0));
+    this.leftArm.add(positionedBlock(0.16, 0.18, 0.18, skin, -0.01, -0.22, -0.02));
+    this.bodyGroup.add(this.leftArm);
 
-    const rightEye = block(0.07, 0.07, 0.05, outline);
-    rightEye.position.set(0.12, 1.38, -0.3);
-    this.avatarGroup.add(rightEye);
+    this.rightArm = new THREE.Group();
+    this.rightArm.position.set(0.43, this.avatarPose.rightArmY, -0.02);
+    this.rightArm.add(positionedBlock(0.18, 0.42, 0.2, robeLight, 0, 0.05, 0));
+    this.rightArm.add(positionedBlock(0.16, 0.18, 0.18, skin, 0.01, -0.22, -0.02));
+    this.bodyGroup.add(this.rightArm);
 
-    const smile = block(0.16, 0.04, 0.05, 0x7a3f31);
-    smile.position.set(0, 1.23, -0.3);
-    this.avatarGroup.add(smile);
+    const head = positionedBlock(plan.head.width, plan.head.height, plan.head.depth, skin, 0, 1.35, -0.02);
+    this.headGroup.add(head);
+    this.headGroup.add(positionedBlock(0.1, 0.22, 0.12, skinShade, -0.39, 1.34, -0.02));
+    this.headGroup.add(positionedBlock(0.1, 0.22, 0.12, skinShade, 0.39, 1.34, -0.02));
+    this.headGroup.add(positionedBlock(0.12, 0.12, 0.05, outline, -0.15, 1.39, -0.33));
+    this.headGroup.add(positionedBlock(0.12, 0.12, 0.05, outline, 0.15, 1.39, -0.33));
+    this.headGroup.add(positionedBlock(0.04, 0.04, 0.06, 0xffffff, -0.13, 1.42, -0.36));
+    this.headGroup.add(positionedBlock(0.04, 0.04, 0.06, 0xffffff, 0.17, 1.42, -0.36));
+    this.headGroup.add(positionedBlock(0.14, 0.06, 0.05, cheekPink, -0.29, 1.28, -0.33));
+    this.headGroup.add(positionedBlock(0.14, 0.06, 0.05, cheekPink, 0.29, 1.28, -0.33));
+    this.headGroup.add(positionedBlock(0.16, 0.04, 0.05, 0x7a3f31, 0, 1.22, -0.33));
+    this.headGroup.add(positionedBlock(0.74, 0.16, 0.58, outline, 0, 1.65, -0.02));
+    this.headGroup.add(positionedBlock(0.18, 0.28, 0.12, outline, -0.32, 1.48, -0.28));
+    this.headGroup.add(positionedBlock(0.16, 0.24, 0.12, outline, 0.31, 1.5, -0.28));
 
-    const cheek = block(0.08, 0.05, 0.05, 0xefb08b);
-    cheek.position.set(-0.22, 1.28, -0.3);
-    this.avatarGroup.add(cheek);
-
-    const hair = block(0.62, 0.16, 0.54, outline);
-    hair.position.set(0, 1.64, -0.02);
-    this.avatarGroup.add(hair);
-
-    const hat = block(0.72, 0.24, 0.62, purple);
-    hat.position.set(0, 1.78, -0.02);
-    this.avatarGroup.add(hat);
-
-    const brim = block(0.42, 0.12, 0.18, 0xe0a742);
-    brim.position.set(0.28, 1.69, -0.34);
-    this.avatarGroup.add(brim);
-
-    const hatRune = block(0.12, 0.1, 0.08, 0x8be4ff);
-    hatRune.position.set(-0.22, 1.79, -0.34);
-    this.avatarGroup.add(hatRune);
+    this.headGroup.add(positionedBlock(0.92, 0.12, 0.7, purpleDark, 0, 1.66, -0.03));
+    this.headGroup.add(positionedBlock(0.94, 0.11, 0.28, gold, 0, 1.62, -0.38));
+    this.headGroup.add(positionedBlock(0.66, 0.32, 0.56, purple, 0, 1.82, -0.02));
+    this.headGroup.add(positionedBlock(0.44, 0.16, 0.42, 0x7e5bb8, 0, 2.06, -0.02));
+    const hatRune = positionedBlock(0.14, 0.12, 0.08, 0x8be4ff, -0.22, 1.84, -0.34);
+    this.headGroup.add(hatRune);
     this.trackAnimation(hatRune, "pulse", 0.35);
+    this.headGroup.add(positionedBlock(0.11, 0.08, 0.08, 0xf8f0cf, 0.2, 1.95, -0.34));
 
-    this.leftArm = block(0.18, 0.56, 0.22, skin);
-    this.leftArm.position.set(-0.42, 0.73, 0);
-    this.avatarGroup.add(this.leftArm);
+    const satchel = positionedBlock(0.28, 0.34, 0.16, 0x7a5131, -0.48, 0.73, -0.18);
+    this.accessoryGroup.add(satchel);
+    this.accessoryGroup.add(positionedBlock(0.08, 0.5, 0.08, gold, -0.3, 0.86, -0.25));
+    [-0.14, 0.02, 0.18].forEach((x, index) => {
+      const potion = positionedBlock(0.12, 0.18, 0.1, [0x7ad6df, 0xf58a9f, 0xd9fff2][index], x, 0.66, -0.3);
+      this.accessoryGroup.add(potion);
+      this.trackAnimation(potion, "bob", 0.45 + index * 0.35);
+    });
 
-    this.rightArm = block(0.18, 0.56, 0.22, skin);
-    this.rightArm.position.set(0.42, 0.73, 0);
-    this.avatarGroup.add(this.rightArm);
-
-    const satchel = block(0.24, 0.32, 0.16, 0x7a5131);
-    satchel.position.set(-0.42, 0.74, -0.18);
-    this.avatarGroup.add(satchel);
-
-    const potion = block(0.16, 0.22, 0.14, 0x7ad6df);
-    potion.position.set(-0.44, 0.95, -0.22);
-    this.avatarGroup.add(potion);
-    this.trackAnimation(potion, "bob", 0.9);
-
-    const wand = block(0.08, 0.7, 0.08, 0x6b4b2e);
-    wand.position.set(0.58, 0.88, -0.08);
-    wand.rotation.z = -0.2;
-    this.avatarGroup.add(wand);
-
-    const wandCrystal = block(0.18, 0.18, 0.18, 0x8be4ff);
-    wandCrystal.position.set(0.64, 1.2, -0.1);
-    this.avatarGroup.add(wandCrystal);
+    const wand = positionedBlock(0.08, 0.76, 0.08, 0x6b4b2e, 0.58, 0.9, -0.08);
+    wand.rotation.z = -0.24;
+    this.accessoryGroup.add(wand);
+    const wandCrystal = positionedBlock(0.2, 0.2, 0.18, 0x8be4ff, 0.65, 1.25, -0.12);
+    this.accessoryGroup.add(wandCrystal);
     this.trackAnimation(wandCrystal, "sparkle", 0.2);
 
-    this.leftLeg = block(0.2, 0.5, 0.24, 0x443a35);
-    this.leftLeg.position.set(-0.17, 0.24, 0);
-    this.avatarGroup.add(this.leftLeg);
+    this.companionOrb.position.set(0.62, this.avatarPose.companionY, -0.42);
+    this.companionOrb.add(positionedBlock(0.18, 0.18, 0.18, 0x9ff3ff, 0, 0, 0));
+    this.companionOrb.add(positionedBlock(0.08, 0.08, 0.08, 0xffffff, -0.07, 0.05, -0.08));
+    this.companionOrb.add(positionedBlock(0.08, 0.08, 0.08, 0xf5d66b, 0.2, -0.12, 0.02));
+    this.accessoryGroup.add(this.companionOrb);
 
-    this.rightLeg = block(0.2, 0.5, 0.24, 0x443a35);
-    this.rightLeg.position.set(0.17, 0.24, 0);
-    this.avatarGroup.add(this.rightLeg);
-
-    const outlineBase = block(0.72, 0.08, 0.56, outline);
-    outlineBase.position.set(0, 0.02, 0);
-    this.avatarGroup.add(outlineBase);
+    this.avatarGroup.add(this.bodyGroup);
+    this.avatarGroup.add(this.headGroup);
+    this.avatarGroup.add(this.accessoryGroup);
 
     this.updateAvatar(this.avatar);
     this.scene.add(this.avatarGroup);
@@ -355,6 +410,16 @@ export class ThreeWorkshopScene {
     const travelDistance = Math.hypot(dx, dz);
     const isGliding = travelDistance > AVATAR_MOTION.snapDistance;
     const motionActive = this.avatar.moving || isGliding;
+    const pose = this.avatarPose ?? {
+      bodyY: 0,
+      headY: 0,
+      accessoryY: 0,
+      companionY: 1.42,
+      leftLegY: 0.24,
+      rightLegY: 0.24,
+      leftArmY: 0.73,
+      rightArmY: 0.73,
+    };
 
     if (isGliding) {
       this.displayWorld.x = dampValue(this.displayWorld.x, this.targetWorld.x, AVATAR_MOTION.followStrength, delta);
@@ -368,19 +433,38 @@ export class ThreeWorkshopScene {
 
     if (motionActive) {
       const stride = Math.sin(time * AVATAR_MOTION.walkBobSpeed);
+      const sway = Math.sin(time * AVATAR_MOTION.walkBobSpeed * 0.5);
       const lift = Math.abs(stride) * AVATAR_MOTION.walkBobHeight;
       this.displayY = dampValue(this.displayY, 0.12 + lift, 18, delta);
-      this.leftLeg.position.y = 0.24 + stride * 0.065;
-      this.rightLeg.position.y = 0.24 - stride * 0.065;
-      this.leftArm.position.y = 0.73 - stride * 0.055;
-      this.rightArm.position.y = 0.73 + stride * 0.055;
+      this.bodyGroup.position.y = pose.bodyY + lift * 0.18;
+      this.bodyGroup.rotation.z = sway * AVATAR_MOTION.bodySway;
+      this.headGroup.position.y = pose.headY + lift * 0.42;
+      this.headGroup.rotation.z = -sway * AVATAR_MOTION.headSway;
+      this.accessoryGroup.position.y = pose.accessoryY + lift * 0.25;
+      this.accessoryGroup.rotation.z = sway * AVATAR_MOTION.accessorySway;
+      this.companionOrb.position.y = pose.companionY + Math.sin(time * 4.2) * 0.09 + lift * 0.35;
+      this.leftLeg.position.y = pose.leftLegY + stride * 0.07;
+      this.rightLeg.position.y = pose.rightLegY - stride * 0.07;
+      this.leftArm.position.y = pose.leftArmY - stride * 0.06;
+      this.rightArm.position.y = pose.rightArmY + stride * 0.06;
+      this.leftArm.rotation.z = 0.08 + stride * 0.08;
+      this.rightArm.rotation.z = -0.08 - stride * 0.08;
     } else {
       const idleY = 0.1 + Math.sin(time * 2.4) * 0.012;
       this.displayY = dampValue(this.displayY, idleY, 10, delta);
-      this.leftLeg.position.y = dampValue(this.leftLeg.position.y, 0.24, 12, delta);
-      this.rightLeg.position.y = dampValue(this.rightLeg.position.y, 0.24, 12, delta);
-      this.leftArm.position.y = dampValue(this.leftArm.position.y, 0.73, 12, delta);
-      this.rightArm.position.y = dampValue(this.rightArm.position.y, 0.73, 12, delta);
+      this.bodyGroup.position.y = dampValue(this.bodyGroup.position.y, pose.bodyY, 12, delta);
+      this.bodyGroup.rotation.z = dampValue(this.bodyGroup.rotation.z, 0, 10, delta);
+      this.headGroup.position.y = dampValue(this.headGroup.position.y, pose.headY + Math.sin(time * 2.1) * 0.01, 10, delta);
+      this.headGroup.rotation.z = dampValue(this.headGroup.rotation.z, 0, 10, delta);
+      this.accessoryGroup.position.y = dampValue(this.accessoryGroup.position.y, pose.accessoryY, 12, delta);
+      this.accessoryGroup.rotation.z = dampValue(this.accessoryGroup.rotation.z, 0, 10, delta);
+      this.companionOrb.position.y = pose.companionY + Math.sin(time * 2.8) * 0.07;
+      this.leftLeg.position.y = dampValue(this.leftLeg.position.y, pose.leftLegY, 12, delta);
+      this.rightLeg.position.y = dampValue(this.rightLeg.position.y, pose.rightLegY, 12, delta);
+      this.leftArm.position.y = dampValue(this.leftArm.position.y, pose.leftArmY, 12, delta);
+      this.rightArm.position.y = dampValue(this.rightArm.position.y, pose.rightArmY, 12, delta);
+      this.leftArm.rotation.z = dampValue(this.leftArm.rotation.z, 0, 10, delta);
+      this.rightArm.rotation.z = dampValue(this.rightArm.rotation.z, 0, 10, delta);
     }
     this.avatarGroup.position.set(this.displayWorld.x, this.displayY, this.displayWorld.z);
 
@@ -451,6 +535,8 @@ export class ThreeWorkshopScene {
     this.container.dataset.threeHeight = String(this.renderer.domElement.height);
     this.container.dataset.threeAvatarX = String(this.avatar.x);
     this.container.dataset.threeAvatarY = String(this.avatar.y);
+    this.container.dataset.threeAvatarFacing = this.avatar.facing;
+    this.container.dataset.threeAvatarMoving = String(this.avatar.moving);
     this.container.dataset.threeSceneId = this.sceneConfig.id;
     this.container.dataset.threeAnimatedObjectCount = String(this.animatedObjects.length);
 

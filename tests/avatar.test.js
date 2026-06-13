@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { clampPosition, findNearestHotspot, isPositionBlocked, moveAvatar } from "../src/avatar.js";
+import {
+  clampPosition,
+  findNearestHotspot,
+  getFrameMoveDistance,
+  getMovementVectorFromKeys,
+  isPositionBlocked,
+  moveAvatar,
+} from "../src/avatar.js";
 
 test("moving avatar changes position by direction and speed", () => {
   const next = moveAvatar({ x: 50, y: 50, facing: "down" }, { x: 1, y: 0 }, 12, {
@@ -10,6 +17,18 @@ test("moving avatar changes position by direction and speed", () => {
   });
 
   assert.deepEqual(next, { x: 62, y: 50, facing: "right", moving: true });
+});
+
+test("frame movement distance scales with elapsed time and caps long frames", () => {
+  assert.equal(getFrameMoveDistance(40, 16), 0.64);
+  assert.equal(getFrameMoveDistance(40, 1000), 2);
+  assert.equal(getFrameMoveDistance(40, -12), 0);
+});
+
+test("held movement keys combine directions and cancel opposite inputs", () => {
+  assert.deepEqual(getMovementVectorFromKeys(new Set(["KeyD", "ArrowUp"])), { x: 1, y: -1 });
+  assert.deepEqual(getMovementVectorFromKeys(["ArrowLeft", "KeyD"]), { x: 0, y: 0 });
+  assert.deepEqual(getMovementVectorFromKeys(["KeyW", "KeyS", "KeyA"]), { x: -1, y: 0 });
 });
 
 test("avatar movement is clamped within stage bounds", () => {

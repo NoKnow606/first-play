@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   AVATAR_MOTION,
   dampValue,
+  getAvatarSilhouettePlan,
   getFacingRotation,
   shouldWriteDiagnostics,
   shortestAngleDelta,
@@ -17,6 +18,8 @@ test("diagnostics are throttled instead of running every frame", () => {
 test("avatar motion uses smoothing constants for non-snappy movement", () => {
   assert.ok(AVATAR_MOTION.followStrength > 6);
   assert.ok(AVATAR_MOTION.walkBobHeight > 0.04);
+  assert.ok(AVATAR_MOTION.bodySway > 0);
+  assert.ok(AVATAR_MOTION.headSway > 0);
 
   const firstFrame = dampValue(0, 10, AVATAR_MOTION.followStrength, 1 / 60);
   assert.ok(firstFrame > 0);
@@ -25,6 +28,17 @@ test("avatar motion uses smoothing constants for non-snappy movement", () => {
   const laterFrame = dampValue(firstFrame, 10, AVATAR_MOTION.followStrength, 1 / 60);
   assert.ok(laterFrame > firstFrame);
   assert.ok(laterFrame < 10);
+});
+
+test("avatar silhouette plan keeps a chibi pixel alchemist profile", () => {
+  const plan = getAvatarSilhouettePlan();
+
+  assert.equal(plan.style, "pixel-chibi-alchemist");
+  assert.ok(plan.head.width > plan.body.width);
+  assert.ok(plan.head.height >= plan.body.height * 0.75);
+  assert.ok(plan.parts.includes("companion-orb"));
+  assert.ok(plan.parts.includes("potion-belt"));
+  assert.ok(plan.parts.length >= 16);
 });
 
 test("avatar turns through the shortest angle", () => {
