@@ -28,3 +28,13 @@ test("battle and reward UI icons cover non-inventory modules", () => {
     assert.doesNotMatch(icon, /x="18" y="18" width="28" height="28" fill="#d8a946"/);
   }
 });
+
+test("pixel control icons replace text-only interface controls", () => {
+  for (const name of ["reset", "close", "move-up", "move-down", "move-left", "move-right", "interact"]) {
+    const icon = getUiIcon(name);
+
+    assert.match(icon, /^<svg /);
+    assert.match(icon, new RegExp(`data-ui-icon-type="${name}"`));
+    assert.doesNotMatch(icon, /x="18" y="18" width="28" height="28" fill="#d8a946"/);
+  }
+});

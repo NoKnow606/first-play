@@ -3,9 +3,24 @@ import { percentToWorld } from "./world.js";
 
 const TILE_SIZE = 1;
 const DIAGNOSTIC_INTERVAL_SECONDS = 0.3;
+export const AVATAR_MOTION = {
+  followStrength: 12,
+  snapDistance: 0.02,
+  turnStrength: 18,
+  walkBobSpeed: 14,
+  walkBobHeight: 0.085,
+};
 
 export function shouldWriteDiagnostics(time, lastDiagnosticAt, interval = DIAGNOSTIC_INTERVAL_SECONDS) {
   return time - lastDiagnosticAt >= interval;
+}
+
+export function dampValue(current, target, strength, delta) {
+  return current + (target - current) * (1 - Math.exp(-strength * delta));
+}
+
+export function shortestAngleDelta(current, target) {
+  return Math.atan2(Math.sin(target - current), Math.cos(target - current));
 }
 
 export class ThreeWorkshopScene {
@@ -19,6 +34,10 @@ export class ThreeWorkshopScene {
     this.clock = new THREE.Clock();
     this.animatedObjects = [];
     this.lastDiagnosticAt = -Infinity;
+    this.targetWorld = percentToWorld(this.avatar);
+    this.targetRotationY = getFacingRotation(this.avatar.facing);
+    this.displayWorld = { ...this.targetWorld };
+    this.displayY = 0.1;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(this.sceneConfig.background ?? 0xb8d3ca);
@@ -55,6 +74,14 @@ export class ThreeWorkshopScene {
     cancelAnimationFrame(this.animationId);
     this.renderer.dispose();
     this.container.replaceChildren();
+  }
+
+  setViewState(options) {
+    this.avatar = options.avatar ?? this.avatar;
+    this.nearestId = options.nearestId ?? null;
+    this.hotspots = options.hotspots ?? this.hotspots;
+    this.targetWorld = percentToWorld(this.avatar);
+    this.targetRotationY = getFacingRotation(this.avatar.facing);
   }
 
   buildLights() {
@@ -204,6 +231,14 @@ export class ThreeWorkshopScene {
     bodySide.position.set(0.24, 0.72, 0.01);
     this.avatarGroup.add(bodySide);
 
+    const robeHem = block(0.62, 0.12, 0.44, 0xd8a946);
+    robeHem.position.set(0, 0.38, -0.01);
+    this.avatarGroup.add(robeHem);
+
+    const belt = block(0.62, 0.1, 0.44, outline);
+    belt.position.set(0, 0.78, -0.01);
+    this.avatarGroup.add(belt);
+
     const badge = block(0.16, 0.16, 0.08, 0xe2b543);
     badge.position.set(0, 0.84, -0.22);
     this.avatarGroup.add(badge);
@@ -211,6 +246,22 @@ export class ThreeWorkshopScene {
     const head = block(0.56, 0.5, 0.5, skin);
     head.position.set(0, 1.36, -0.02);
     this.avatarGroup.add(head);
+
+    const leftEye = block(0.07, 0.07, 0.05, outline);
+    leftEye.position.set(-0.12, 1.38, -0.3);
+    this.avatarGroup.add(leftEye);
+
+    const rightEye = block(0.07, 0.07, 0.05, outline);
+    rightEye.position.set(0.12, 1.38, -0.3);
+    this.avatarGroup.add(rightEye);
+
+    const smile = block(0.16, 0.04, 0.05, 0x7a3f31);
+    smile.position.set(0, 1.23, -0.3);
+    this.avatarGroup.add(smile);
+
+    const cheek = block(0.08, 0.05, 0.05, 0xefb08b);
+    cheek.position.set(-0.22, 1.28, -0.3);
+    this.avatarGroup.add(cheek);
 
     const hair = block(0.62, 0.16, 0.54, outline);
     hair.position.set(0, 1.64, -0.02);
@@ -224,6 +275,11 @@ export class ThreeWorkshopScene {
     brim.position.set(0.28, 1.69, -0.34);
     this.avatarGroup.add(brim);
 
+    const hatRune = block(0.12, 0.1, 0.08, 0x8be4ff);
+    hatRune.position.set(-0.22, 1.79, -0.34);
+    this.avatarGroup.add(hatRune);
+    this.trackAnimation(hatRune, "pulse", 0.35);
+
     this.leftArm = block(0.18, 0.56, 0.22, skin);
     this.leftArm.position.set(-0.42, 0.73, 0);
     this.avatarGroup.add(this.leftArm);
@@ -231,6 +287,25 @@ export class ThreeWorkshopScene {
     this.rightArm = block(0.18, 0.56, 0.22, skin);
     this.rightArm.position.set(0.42, 0.73, 0);
     this.avatarGroup.add(this.rightArm);
+
+    const satchel = block(0.24, 0.32, 0.16, 0x7a5131);
+    satchel.position.set(-0.42, 0.74, -0.18);
+    this.avatarGroup.add(satchel);
+
+    const potion = block(0.16, 0.22, 0.14, 0x7ad6df);
+    potion.position.set(-0.44, 0.95, -0.22);
+    this.avatarGroup.add(potion);
+    this.trackAnimation(potion, "bob", 0.9);
+
+    const wand = block(0.08, 0.7, 0.08, 0x6b4b2e);
+    wand.position.set(0.58, 0.88, -0.08);
+    wand.rotation.z = -0.2;
+    this.avatarGroup.add(wand);
+
+    const wandCrystal = block(0.18, 0.18, 0.18, 0x8be4ff);
+    wandCrystal.position.set(0.64, 1.2, -0.1);
+    this.avatarGroup.add(wandCrystal);
+    this.trackAnimation(wandCrystal, "sparkle", 0.2);
 
     this.leftLeg = block(0.2, 0.5, 0.24, 0x443a35);
     this.leftLeg.position.set(-0.17, 0.24, 0);
@@ -251,14 +326,12 @@ export class ThreeWorkshopScene {
   updateAvatar(avatar) {
     this.avatar = avatar;
     const world = percentToWorld(avatar);
-    this.avatarGroup.position.set(world.x, 0.1, world.z);
-    const rotations = {
-      down: 0,
-      right: Math.PI / 2,
-      up: Math.PI,
-      left: -Math.PI / 2,
-    };
-    this.avatarGroup.rotation.y = rotations[avatar.facing] ?? 0;
+    this.targetWorld = world;
+    this.displayWorld = { ...world };
+    this.displayY = 0.1;
+    this.targetRotationY = getFacingRotation(avatar.facing);
+    this.avatarGroup.position.set(world.x, this.displayY, world.z);
+    this.avatarGroup.rotation.y = this.targetRotationY;
   }
 
   resize() {
@@ -275,17 +348,41 @@ export class ThreeWorkshopScene {
   }
 
   animate() {
-    const time = this.clock.getElapsedTime();
-    if (this.avatar.moving) {
-      const bob = Math.sin(time * 18) * 0.05;
-      this.avatarGroup.position.y = 0.14 + Math.abs(bob);
-      this.leftLeg.position.y = 0.24 + bob;
-      this.rightLeg.position.y = 0.24 - bob;
-      this.leftArm.position.y = 0.73 - bob;
-      this.rightArm.position.y = 0.73 + bob;
+    const delta = Math.min(this.clock.getDelta(), 0.05);
+    const time = this.clock.elapsedTime;
+    const dx = this.targetWorld.x - this.displayWorld.x;
+    const dz = this.targetWorld.z - this.displayWorld.z;
+    const travelDistance = Math.hypot(dx, dz);
+    const isGliding = travelDistance > AVATAR_MOTION.snapDistance;
+    const motionActive = this.avatar.moving || isGliding;
+
+    if (isGliding) {
+      this.displayWorld.x = dampValue(this.displayWorld.x, this.targetWorld.x, AVATAR_MOTION.followStrength, delta);
+      this.displayWorld.z = dampValue(this.displayWorld.z, this.targetWorld.z, AVATAR_MOTION.followStrength, delta);
     } else {
-      this.avatarGroup.position.y = 0.1;
+      this.displayWorld = { ...this.targetWorld };
     }
+
+    const turnDelta = shortestAngleDelta(this.avatarGroup.rotation.y, this.targetRotationY);
+    this.avatarGroup.rotation.y += turnDelta * (1 - Math.exp(-AVATAR_MOTION.turnStrength * delta));
+
+    if (motionActive) {
+      const stride = Math.sin(time * AVATAR_MOTION.walkBobSpeed);
+      const lift = Math.abs(stride) * AVATAR_MOTION.walkBobHeight;
+      this.displayY = dampValue(this.displayY, 0.12 + lift, 18, delta);
+      this.leftLeg.position.y = 0.24 + stride * 0.065;
+      this.rightLeg.position.y = 0.24 - stride * 0.065;
+      this.leftArm.position.y = 0.73 - stride * 0.055;
+      this.rightArm.position.y = 0.73 + stride * 0.055;
+    } else {
+      const idleY = 0.1 + Math.sin(time * 2.4) * 0.012;
+      this.displayY = dampValue(this.displayY, idleY, 10, delta);
+      this.leftLeg.position.y = dampValue(this.leftLeg.position.y, 0.24, 12, delta);
+      this.rightLeg.position.y = dampValue(this.rightLeg.position.y, 0.24, 12, delta);
+      this.leftArm.position.y = dampValue(this.leftArm.position.y, 0.73, 12, delta);
+      this.rightArm.position.y = dampValue(this.rightArm.position.y, 0.73, 12, delta);
+    }
+    this.avatarGroup.position.set(this.displayWorld.x, this.displayY, this.displayWorld.z);
 
     for (const entry of this.animatedObjects) {
       const { object, type, phase } = entry;
@@ -419,8 +516,11 @@ export class ThreeWorkshopScene {
     const palette = npcPalette(npc.palette);
     const root = new THREE.Group();
 
+    root.add(positionedBlock(0.82, 0.04, 0.62, 0x26382f, 0, 0.04, 0));
     root.add(positionedBlock(0.42, 0.68, 0.32, palette.coat, 0, 0.62, 0));
     root.add(positionedBlock(0.16, 0.66, 0.34, palette.coatDark, 0.2, 0.62, 0.01));
+    root.add(positionedBlock(0.52, 0.1, 0.36, palette.accent, 0, 0.42, -0.01));
+    root.add(positionedBlock(0.5, 0.08, 0.36, 0x2a211b, 0, 0.78, -0.01));
     root.add(positionedBlock(0.46, 0.42, 0.42, palette.skin, 0, 1.2, -0.02));
     root.add(positionedBlock(0.5, 0.14, 0.46, palette.hair, 0, 1.45, -0.02));
     root.add(positionedBlock(0.14, 0.42, 0.16, palette.skin, -0.34, 0.62, 0));
@@ -430,17 +530,43 @@ export class ThreeWorkshopScene {
     root.add(positionedBlock(0.16, 0.42, 0.18, 0x3a332f, 0.13, 0.2, 0));
     root.add(positionedBlock(0.08, 0.08, 0.08, 0x1c1a17, -0.11, 1.24, -0.25));
     root.add(positionedBlock(0.08, 0.08, 0.08, 0x1c1a17, 0.11, 1.24, -0.25));
+    root.add(positionedBlock(0.14, 0.04, 0.05, 0x7a3f31, 0, 1.1, -0.25));
 
     if (npc.palette === "miner") {
       root.add(positionedBlock(0.58, 0.18, 0.5, 0xd9b95a, 0, 1.56, -0.02));
       root.add(positionedBlock(0.16, 0.1, 0.08, 0xfff2a0, 0, 1.56, -0.28));
+      const pickHandle = positionedBlock(0.08, 0.78, 0.08, 0x6b4b2e, -0.48, 0.84, -0.04);
+      pickHandle.rotation.z = 0.55;
+      root.add(pickHandle);
+      const pickHead = positionedBlock(0.54, 0.1, 0.12, 0x9aa6aa, -0.54, 1.16, -0.08);
+      pickHead.rotation.z = 0.55;
+      root.add(pickHead);
+      root.add(positionedBlock(0.18, 0.18, 0.12, 0x8be4ff, 0.32, 0.92, -0.22));
     } else if (npc.palette === "pilot") {
       root.add(positionedBlock(0.56, 0.18, 0.5, 0x5b6970, 0, 1.56, -0.02));
       root.add(positionedBlock(0.5, 0.08, 0.12, 0xd9fff2, 0, 1.38, -0.28));
+      root.add(positionedBlock(0.62, 0.08, 0.1, 0x26382f, 0, 1.31, -0.28));
+      root.add(positionedBlock(0.14, 0.12, 0.08, 0xd9fff2, -0.12, 1.31, -0.33));
+      root.add(positionedBlock(0.14, 0.12, 0.08, 0xd9fff2, 0.12, 1.31, -0.33));
+      const propeller = positionedBlock(0.1, 0.58, 0.08, 0xf5d66b, 0.48, 0.96, -0.12);
+      propeller.rotation.z = Math.PI / 2;
+      root.add(propeller);
+      this.trackAnimation(propeller, "spin", 0.1);
     } else if (npc.palette === "forager") {
       root.add(positionedBlock(0.58, 0.16, 0.5, 0x7aa454, 0, 1.54, -0.02));
+      root.add(positionedBlock(0.28, 0.24, 0.2, 0x8a5a21, -0.44, 0.72, -0.08));
+      root.add(positionedBlock(0.12, 0.16, 0.12, 0xc84b4b, -0.5, 0.92, -0.18));
+      root.add(positionedBlock(0.1, 0.18, 0.1, 0xffd36b, -0.36, 0.94, -0.16));
+      const leaf = positionedBlock(0.16, 0.34, 0.12, 0x75b86f, 0.42, 1.0, -0.18);
+      leaf.rotation.z = -0.35;
+      root.add(leaf);
     } else {
       root.add(positionedBlock(0.56, 0.18, 0.5, 0x8b5db2, 0, 1.55, -0.02));
+      root.add(positionedBlock(0.28, 0.32, 0.08, 0xfff7dd, -0.42, 0.92, -0.16));
+      root.add(positionedBlock(0.22, 0.04, 0.1, 0xd8a946, -0.42, 1.02, -0.22));
+      const crystal = positionedBlock(0.16, 0.16, 0.16, 0x8be4ff, 0.42, 1.08, -0.16);
+      root.add(crystal);
+      this.trackAnimation(crystal, "sparkle", 0.4);
     }
 
     root.add(positionedBlock(0.16, 0.16, 0.08, palette.accent, 0, 0.78, -0.2));
@@ -781,6 +907,15 @@ function positionedBlock(width, height, depth, color, x, y, z) {
   const mesh = block(width, height, depth, color);
   mesh.position.set(x, y, z);
   return mesh;
+}
+
+export function getFacingRotation(facing) {
+  return {
+    up: 0,
+    down: Math.PI,
+    right: -Math.PI / 2,
+    left: Math.PI / 2,
+  }[facing] ?? 0;
 }
 
 function npcPalette(id) {

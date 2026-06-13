@@ -1,3 +1,5 @@
+import { getBattleMotionPlan } from "./animation-frames.js";
+
 const ENEMY_SPRITE_BY_ID = {
   berry_slime: "slime",
   ember_bat: "bat",
@@ -13,9 +15,14 @@ const EFFECT_BY_ACTION = {
 
 export function getBattlePresentation(battle, scene = {}) {
   const motion = normalizeMotion(battle.lastAction);
+  const motionPlan = getBattleMotionPlan(motion);
   return {
     sceneClass: `battle-scene-${scene.id ?? "workshop"}`,
     motion,
+    motionPlan,
+    motionFrameCount: motionPlan.frameCount,
+    motionDurationMs: motionPlan.durationMs,
+    effectClass: motionPlan.effectClass,
     effect: EFFECT_BY_ACTION[motion],
     enemySprite: ENEMY_SPRITE_BY_ID[battle.enemyId] ?? "construct",
     playerPercent: percent(battle.playerHp, battle.playerMaxHp),

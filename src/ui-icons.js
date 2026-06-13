@@ -10,6 +10,14 @@ const ICON_ALIASES = {
   action_attack: "attack",
   action_guard: "guard",
   action_alchemy: "alchemy",
+  move_up: "move-up",
+  move_down: "move-down",
+  move_left: "move-left",
+  move_right: "move-right",
+  moveUp: "move-up",
+  moveDown: "move-down",
+  moveLeft: "move-left",
+  moveRight: "move-right",
 };
 
 export function getUiIcon(name = "unknown") {
@@ -49,6 +57,13 @@ function drawUiIcon(type) {
     mastery: `<rect x="14" y="40" width="36" height="8" fill="#26382f"/><rect x="18" y="28" width="8" height="12" fill="#d8a946"/><rect x="28" y="20" width="8" height="20" fill="#d8a946"/><rect x="38" y="12" width="8" height="28" fill="#d8a946"/><rect x="24" y="14" width="16" height="8" fill="#fff7dd"/>`,
     success: `<rect x="14" y="30" width="12" height="10" fill="#245f56"/><rect x="24" y="38" width="10" height="10" fill="#245f56"/><rect x="32" y="22" width="18" height="10" fill="#245f56"/>`,
     fail: `<rect x="16" y="16" width="10" height="10" fill="#a8503f"/><rect x="26" y="26" width="12" height="12" fill="#a8503f"/><rect x="38" y="38" width="10" height="10" fill="#a8503f"/><rect x="38" y="16" width="10" height="10" fill="#a8503f"/><rect x="16" y="38" width="10" height="10" fill="#a8503f"/>`,
+    reset: `<rect x="18" y="18" width="26" height="8" fill="#245f56"/><rect x="12" y="24" width="8" height="18" fill="#245f56"/><rect x="20" y="42" width="26" height="8" fill="#245f56"/><rect x="42" y="30" width="8" height="12" fill="#245f56"/><rect x="14" y="12" width="12" height="12" fill="#d8a946"/><rect x="38" y="40" width="12" height="12" fill="#d8a946"/>`,
+    close: `<rect x="16" y="14" width="10" height="10" fill="#a8503f"/><rect x="26" y="24" width="12" height="12" fill="#a8503f"/><rect x="38" y="36" width="10" height="10" fill="#a8503f"/><rect x="38" y="14" width="10" height="10" fill="#26382f"/><rect x="16" y="36" width="10" height="10" fill="#26382f"/>`,
+    "move-up": `<rect x="28" y="12" width="8" height="36" fill="#245f56"/><rect x="20" y="20" width="8" height="8" fill="#245f56"/><rect x="36" y="20" width="8" height="8" fill="#245f56"/><rect x="24" y="44" width="16" height="8" fill="#d8a946"/>`,
+    "move-down": `<rect x="28" y="16" width="8" height="36" fill="#245f56"/><rect x="20" y="36" width="8" height="8" fill="#245f56"/><rect x="36" y="36" width="8" height="8" fill="#245f56"/><rect x="24" y="12" width="16" height="8" fill="#d8a946"/>`,
+    "move-left": `<rect x="14" y="28" width="36" height="8" fill="#245f56"/><rect x="22" y="20" width="8" height="8" fill="#245f56"/><rect x="22" y="36" width="8" height="8" fill="#245f56"/><rect x="44" y="24" width="8" height="16" fill="#d8a946"/>`,
+    "move-right": `<rect x="14" y="28" width="36" height="8" fill="#245f56"/><rect x="34" y="20" width="8" height="8" fill="#245f56"/><rect x="34" y="36" width="8" height="8" fill="#245f56"/><rect x="12" y="24" width="8" height="16" fill="#d8a946"/>`,
+    interact: `<rect x="24" y="14" width="16" height="16" fill="#d8a946"/><rect x="18" y="30" width="28" height="18" fill="#245f56"/><rect x="28" y="34" width="8" height="8" fill="#fff7dd"/><rect x="12" y="20" width="8" height="8" fill="#7ad6df"/><rect x="46" y="42" width="8" height="8" fill="#7ad6df"/>`,
     locked: `<rect x="18" y="28" width="30" height="22" fill="#6d6d65"/><rect x="24" y="16" width="18" height="18" fill="#a6aaa5"/><rect x="30" y="36" width="6" height="8" fill="#fff7dd"/>`,
     unknown: `<rect x="18" y="18" width="28" height="28" fill="#d8a946"/><rect x="26" y="24" width="12" height="8" fill="#26382f"/><rect x="30" y="34" width="6" height="6" fill="#26382f"/><rect x="30" y="44" width="6" height="6" fill="#26382f"/>`,
     life: `<rect x="28" y="12" width="8" height="38" fill="#55a765"/><rect x="16" y="28" width="32" height="8" fill="#55a765"/><rect x="24" y="20" width="16" height="18" fill="#9ee58f"/>`,

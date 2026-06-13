@@ -5,7 +5,7 @@ export function clampPosition(position, bounds) {
   };
 }
 
-export function moveAvatar(avatar, vector, speed, bounds) {
+export function moveAvatar(avatar, vector, speed, bounds, collisionZones = []) {
   const length = Math.hypot(vector.x, vector.y);
   if (length === 0) {
     return {
@@ -25,11 +25,38 @@ export function moveAvatar(avatar, vector, speed, bounds) {
     },
     bounds
   );
+  const facing = getFacing(vector, avatar.facing);
+
+  if (canOccupyPosition(position, avatar, collisionZones)) {
+    return {
+      ...position,
+      facing,
+      moving: true,
+    };
+  }
+
+  const horizontal = clampPosition({ x: position.x, y: avatar.y }, bounds);
+  const vertical = clampPosition({ x: avatar.x, y: position.y }, bounds);
+  const slideCandidates =
+    Math.abs(vector.x) >= Math.abs(vector.y) ? [horizontal, vertical] : [vertical, horizontal];
+  const slide = slideCandidates.find(
+    (candidate) =>
+      (candidate.x !== avatar.x || candidate.y !== avatar.y) && canOccupyPosition(candidate, avatar, collisionZones)
+  );
+
+  if (slide) {
+    return {
+      ...slide,
+      facing,
+      moving: true,
+    };
+  }
 
   return {
-    ...position,
-    facing: getFacing(vector, avatar.facing),
-    moving: true,
+    x: avatar.x,
+    y: avatar.y,
+    facing,
+    moving: false,
   };
 }
 
@@ -46,6 +73,24 @@ export function findNearestHotspot(position, hotspots) {
   }
 
   return nearest;
+}
+
+export function isPositionBlocked(position, collisionZones = []) {
+  return collisionZones.some((zone) => distanceToZone(position, zone) < zone.radius);
+}
+
+function canOccupyPosition(position, previousPosition, collisionZones) {
+  return !collisionZones.some((zone) => {
+    const nextDistance = distanceToZone(position, zone);
+    if (nextDistance >= zone.radius) return false;
+
+    const previousDistance = distanceToZone(previousPosition, zone);
+    return nextDistance <= previousDistance + 0.01;
+  });
+}
+
+function distanceToZone(position, zone) {
+  return Math.hypot(position.x - zone.x, position.y - zone.y);
 }
 
 function getFacing(vector, fallback) {

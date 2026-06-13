@@ -1,4 +1,4 @@
-import { findNearestHotspot, moveAvatar } from "./avatar.js";
+import { findNearestHotspot, moveAvatar } from "./avatar.js?v=collision-facing-1";
 import {
   AREAS,
   CATEGORY_LABELS,
@@ -14,6 +14,7 @@ import {
   TASKS,
 } from "./data.js";
 import { ADVENTURE_ROUTES } from "./adventure.js";
+import { getUiMotionPlan } from "./animation-frames.js";
 import { getAdventureSceneSwitchGuard } from "./adventure-flow.js";
 import { getBattlePresentation } from "./battle-view.js";
 import { getInventoryIcon } from "./item-icons.js";
@@ -35,8 +36,14 @@ import {
   startAdventureSession,
   takeBattleTurn,
 } from "./domain.js";
-import { getScene, getSceneHotspots, resolveSceneTransition, SCENE_ORDER } from "./scenes.js";
-import { ThreeWorkshopScene } from "./three-scene.js?v=adventure-3";
+import {
+  getScene,
+  getSceneCollisionZones,
+  getSceneHotspots,
+  resolveSceneTransition,
+  SCENE_ORDER,
+} from "./scenes.js?v=collision-facing-1";
+import { ThreeWorkshopScene } from "./three-scene.js?v=collision-facing-1";
 
 const STORAGE_KEY = "alchemy-workshop-p0-state";
 const AVATAR_KEY = "alchemy-workshop-p0-avatar";
@@ -55,6 +62,7 @@ let notice = "";
 let activeDialogue = null;
 let moveTimer = null;
 let threeScene = null;
+let threeSceneSignature = "";
 let diagnosticsTimer = null;
 
 render();
@@ -103,16 +111,12 @@ document.addEventListener("pointerdown", (event) => {
   const stage = event.target.closest(".workshop-stage");
   if (!stage || event.target.closest("[data-action]") || event.target.closest(".drawer")) return;
   const rect = stage.getBoundingClientRect();
-  avatar = {
-    ...avatar,
+  const targetPosition = {
     x: clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100),
     y: clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100),
-    moving: true,
   };
+  moveAvatarToward(targetPosition);
   activeDialogue = null;
-  persistAvatar();
-  stopMovingSoon();
-  render();
 });
 
 function handleAction(target) {
@@ -129,7 +133,7 @@ function handleAction(target) {
   if (action === "hotspot") {
     const hotspot = getCurrentHotspots().find((entry) => entry.id === target.dataset.hotspotId);
     if (!hotspot) return;
-    avatar = { ...avatar, x: hotspot.x, y: Math.min(100, hotspot.y + 5), moving: true };
+    avatar = getHotspotApproachAvatar(hotspot);
     persistAvatar();
     stopMovingSoon();
     handleHotspot(hotspot);
@@ -347,11 +351,43 @@ function switchScene(sceneId) {
 }
 
 function moveAvatarBy(vector) {
-  avatar = moveAvatar(avatar, vector, AVATAR_SPEED, STAGE_BOUNDS);
+  avatar = moveAvatar(avatar, vector, AVATAR_SPEED, STAGE_BOUNDS, getCurrentCollisionZones());
   activeDialogue = null;
   persistAvatar();
   stopMovingSoon();
   render();
+}
+
+function moveAvatarToward(targetPosition) {
+  const vector = {
+    x: targetPosition.x - avatar.x,
+    y: targetPosition.y - avatar.y,
+  };
+  const distance = Math.hypot(vector.x, vector.y);
+  avatar = moveAvatar(avatar, vector, Math.min(AVATAR_SPEED, distance), STAGE_BOUNDS, getCurrentCollisionZones());
+  persistAvatar();
+  stopMovingSoon();
+  render();
+}
+
+function getHotspotApproachAvatar(hotspot) {
+  const zone = getCurrentCollisionZones().find((entry) => entry.id === hotspot.id);
+  const standDistance = (zone?.radius ?? 5) + 4;
+  let away = {
+    x: avatar.x - hotspot.x,
+    y: avatar.y - hotspot.y,
+  };
+  let length = Math.hypot(away.x, away.y);
+  if (length === 0) {
+    away = { x: 0, y: 1 };
+    length = 1;
+  }
+  return {
+    ...avatar,
+    x: clamp(hotspot.x + (away.x / length) * standDistance, 0, STAGE_BOUNDS.width),
+    y: clamp(hotspot.y + (away.y / length) * standDistance, 0, STAGE_BOUNDS.height),
+    moving: true,
+  };
 }
 
 function stopMovingSoon() {
@@ -381,6 +417,10 @@ function getCurrentHotspots() {
       adventureEvent: true,
     },
   ];
+}
+
+function getCurrentCollisionZones() {
+  return getSceneCollisionZones(currentSceneId, getCurrentHotspots());
 }
 
 function render() {
@@ -425,7 +465,9 @@ function renderHud(currentScene) {
         ${stat("灵感", state.resources.inspiration)}
         ${stat("配方", `${state.codex.discoveredRecipeIds.length}/${RECIPES.length}`)}
       </div>
-      <button class="icon-button reset-button" data-action="reset" aria-label="重置存档">R</button>
+      <button class="icon-button reset-button" data-action="reset" aria-label="重置存档">
+        ${renderUiIcon("reset", "control-icon")}
+      </button>
     </header>
   `;
 }
@@ -468,21 +510,64 @@ function mountThreeScene(nearest) {
   const container = document.querySelector("#three-stage");
   if (!container) return;
   window.clearTimeout(diagnosticsTimer);
+  const scene = getScene(currentSceneId);
+  const hotspots = getCurrentHotspots();
+  const signature = getThreeSceneSignature(scene, hotspots);
+
+  if (threeScene && threeSceneSignature === signature) {
+    if (threeScene.container !== container) {
+      container.replaceChildren(threeScene.renderer.domElement);
+      container.dataset.threeMounted = "true";
+      threeScene.container = container;
+      threeScene.resize();
+    }
+    threeScene.setViewState({
+      avatar,
+      scene,
+      hotspots,
+      nearestId: nearest?.id ?? null,
+    });
+    writeThreeDiagnosticsSoon();
+    updateThreeMountDiagnostics(nearest, hotspots, true);
+    return;
+  }
+
   if (threeScene) {
     threeScene.dispose();
     threeScene = null;
   }
   threeScene = new ThreeWorkshopScene(container, {
     avatar,
-    scene: getScene(currentSceneId),
-    hotspots: getCurrentHotspots(),
+    scene,
+    hotspots,
     nearestId: nearest?.id ?? null,
   });
+  threeSceneSignature = signature;
+  writeThreeDiagnosticsSoon();
+  updateThreeMountDiagnostics(nearest, hotspots, false);
+}
+
+function getThreeSceneSignature(scene, hotspots) {
+  return `${scene.id}:${hotspots.map((hotspot) => hotspot.id).join("|")}`;
+}
+
+function updateThreeMountDiagnostics(nearest, hotspots, reused) {
+  const container = document.querySelector("#three-stage");
+  if (container) {
+    container.dataset.threeReused = String(reused);
+    container.dataset.threeNearestId = nearest?.id ?? "";
+    container.dataset.threeHotspotCount = String(hotspots.length);
+  }
   window.__alchemy3dMounted = {
     avatar: { ...avatar },
     sceneId: currentSceneId,
-    hotspotCount: getCurrentHotspots().length,
+    hotspotCount: hotspots.length,
+    nearestId: nearest?.id ?? null,
+    reused,
   };
+}
+
+function writeThreeDiagnosticsSoon() {
   const sceneForDiagnostics = threeScene;
   diagnosticsTimer = window.setTimeout(() => {
     if (threeScene !== sceneForDiagnostics) return;
@@ -585,13 +670,25 @@ function renderSceneNotice(currentScene, nearest) {
 }
 
 function renderDpad() {
+  const controls = [
+    { action: "move", dx: 0, dy: -1, icon: "move-up", label: "向上" },
+    { action: "move", dx: -1, dy: 0, icon: "move-left", label: "向左" },
+    { action: "interact", icon: "interact", label: "交互" },
+    { action: "move", dx: 1, dy: 0, icon: "move-right", label: "向右" },
+    { action: "move", dx: 0, dy: 1, icon: "move-down", label: "向下" },
+  ];
   return `
     <div class="dpad" aria-label="移动控制">
-      <button data-action="move" data-dx="0" data-dy="-1" aria-label="向上">↑</button>
-      <button data-action="move" data-dx="-1" data-dy="0" aria-label="向左">←</button>
-      <button data-action="interact" aria-label="交互">•</button>
-      <button data-action="move" data-dx="1" data-dy="0" aria-label="向右">→</button>
-      <button data-action="move" data-dx="0" data-dy="1" aria-label="向下">↓</button>
+      ${controls
+        .map((control) => {
+          const movement = control.action === "move" ? `data-dx="${control.dx}" data-dy="${control.dy}"` : "";
+          return `
+            <button class="dpad-control dpad-${control.icon}" data-action="${control.action}" ${movement} aria-label="${control.label}">
+              ${renderUiIcon(control.icon, "dpad-icon")}
+            </button>
+          `;
+        })
+        .join("")}
     </div>
   `;
 }
@@ -619,8 +716,9 @@ function renderDock() {
 }
 
 function renderDrawer(panel) {
+  const drawerMotion = getUiMotionPlan("drawer");
   return `
-    <aside class="drawer drawer-${panel}" aria-label="${panelTitle(panel)}">
+    <aside class="drawer drawer-${panel} ${drawerMotion.cssClass}" aria-label="${panelTitle(panel)}" style="--motion-duration:${drawerMotion.durationMs}ms">
       <header class="drawer-head">
         <div class="drawer-title">
           ${renderUiIcon(panelIconName(panel), "drawer-icon")}
@@ -629,7 +727,9 @@ function renderDrawer(panel) {
             <h2>${panelTitle(panel)}</h2>
           </div>
         </div>
-        <button class="icon-button" data-action="close-panel" aria-label="关闭">×</button>
+        <button class="icon-button" data-action="close-panel" aria-label="关闭">
+          ${renderUiIcon("close", "control-icon")}
+        </button>
       </header>
       ${renderPanelContent(panel)}
     </aside>
@@ -822,7 +922,7 @@ function renderBattlePanel() {
   if (!battle) return `<p class="empty">当前没有遭遇战。</p>`;
   const view = getBattlePresentation(battle, getScene(currentSceneId));
   return `
-    <section class="battle-panel battle-motion-${view.motion}">
+    <section class="battle-panel battle-motion-${view.motion}" style="--motion-frames:${view.motionFrameCount}; --motion-duration:${view.motionDurationMs}ms">
       <div class="battle-transition" aria-hidden="true"><span>遭遇战</span></div>
       <div class="battle-stage ${view.sceneClass}" aria-label="战斗场景">
         <div class="battle-stage-backdrop" aria-hidden="true"></div>
@@ -834,7 +934,7 @@ function renderBattlePanel() {
         <div class="battle-platform player-platform" aria-hidden="true">
           ${renderPlayerBattleSprite()}
         </div>
-        <div class="move-effect move-effect-${view.effect}" aria-hidden="true"></div>
+        <div class="move-effect move-effect-${view.effect} ${view.effectClass}" aria-hidden="true"></div>
       </div>
       <div class="battle-caption">
         <strong>${escapeHtml(view.caption)}</strong>
@@ -884,6 +984,7 @@ function renderEnemyBattleSprite(sprite) {
   return `
     <div class="battle-sprite enemy-sprite sprite-${sprite}">
       <span class="sprite-shadow"></span>
+      <span class="sprite-aura"></span>
       <span class="sprite-body"></span>
       <span class="sprite-face"></span>
       <span class="sprite-detail detail-a"></span>
@@ -901,6 +1002,9 @@ function renderPlayerBattleSprite() {
       <span class="player-hat"></span>
       <span class="player-pack"></span>
       <span class="player-arm"></span>
+      <span class="player-orb"></span>
+      <span class="player-spark spark-a"></span>
+      <span class="player-spark spark-b"></span>
     </div>
   `;
 }

@@ -121,6 +121,7 @@ export const SCENES = [
 ];
 
 export const SCENE_BY_ID = Object.fromEntries(SCENES.map((scene) => [scene.id, scene]));
+const COLLISION_RADIUS_RATIO = 0.42;
 
 export function getScene(sceneId) {
   return SCENE_BY_ID[sceneId] ?? SCENE_BY_ID.workshop;
@@ -132,6 +133,13 @@ export function getSceneHotspots(sceneId) {
 
 export function getNpcHotspots(sceneId) {
   return getSceneHotspots(sceneId).filter((hotspot) => hotspot.npc);
+}
+
+export function getSceneCollisionZones(sceneId, hotspots = getSceneHotspots(sceneId)) {
+  const scene = getScene(sceneId);
+  const staticZones = scene.collisionZones ?? [];
+  const hotspotZones = hotspots.filter(hasCollision).map(hotspotToCollisionZone);
+  return [...staticZones, ...hotspotZones];
 }
 
 export function resolveSceneTransition(sceneId, hotspotId) {
@@ -168,5 +176,18 @@ function hotspot(id, label, verb, kind, x, y, radius, options = {}) {
     y,
     radius,
     ...options,
+  };
+}
+
+function hasCollision(hotspot) {
+  return hotspot.collision !== false;
+}
+
+function hotspotToCollisionZone(hotspot) {
+  return {
+    id: hotspot.id,
+    x: hotspot.x,
+    y: hotspot.y,
+    radius: hotspot.collisionRadius ?? Math.max(5, Math.round(hotspot.radius * COLLISION_RADIUS_RATIO)),
   };
 }

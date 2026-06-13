@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getNpcHotspots, getScene, getSceneHotspots, resolveSceneTransition, SCENE_ORDER } from "../src/scenes.js";
+import {
+  getNpcHotspots,
+  getScene,
+  getSceneCollisionZones,
+  getSceneHotspots,
+  resolveSceneTransition,
+  SCENE_ORDER,
+} from "../src/scenes.js";
 
 test("scene set includes workshop and three exploration scenes", () => {
   assert.deepEqual(SCENE_ORDER, ["workshop", "meadow", "mine", "sky_dock"]);
@@ -36,4 +43,14 @@ test("each scene has at least one talkable NPC hotspot", () => {
     assert.ok(npcs.length >= 1, `${sceneId} should include an NPC`);
     assert.ok(npcs.every((hotspot) => hotspot.verb === "交谈" && hotspot.npc?.line));
   }
+});
+
+test("scene collision zones cover solid interactables without blocking their interaction radius", () => {
+  const zones = getSceneCollisionZones("workshop");
+  const furnace = zones.find((zone) => zone.id === "furnace");
+  const mentor = zones.find((zone) => zone.id === "npc_mira");
+
+  assert.ok(furnace);
+  assert.ok(mentor);
+  assert.ok(furnace.radius < getSceneHotspots("workshop").find((hotspot) => hotspot.id === "furnace").radius);
 });
